@@ -1,0 +1,13 @@
+
+```{python}
+import polars as pl
+import json
+from pyprojroot.here import here
+```
+
+
+```{python}
+df = pl.read_json(here("01_data/raw/us_congress/legislators-historical.json"))
+print(df)
+```
+

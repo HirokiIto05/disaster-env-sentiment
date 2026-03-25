@@ -1,0 +1,28 @@
+{
+  "name": "Text Analysis",
+  // Path to docker-compose.yml from .devcontainer/ folder
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "textanalysis",
+  "workspaceFolder": "/workspace",
+
+  // VS Code extensions and settings
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.pylance",
+        // "REditorSupport.r",
+        "quarto.quarto",
+        "ms-toolsai.jupyter"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/bin/python3"
+        // "r.rpath.linux": "/usr/bin/R",
+        // "r.rterm.linux": "/usr/bin/Rscript"
+      }
+    }
+  },
+
+  // Register Python kernel for Jupyter / Quarto after container creation
+  "postCreateCommand": "python -m ipykernel install --user --name=textanalysis"
+}

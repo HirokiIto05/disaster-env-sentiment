@@ -1,0 +1,12 @@
+# ── Core ──────────────────────────────────────────────────────
+numpy
+pandas
+matplotlib
+
+# ── Text Analysis ─────────────────────────────────────────────
+nltk
+scikit-learn
+
+# ── Notebook / Quarto integration ─────────────────────────────
+jupyter
+ipykernel

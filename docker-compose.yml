@@ -1,0 +1,31 @@
+services:
+  textanalysis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: textanalysis_dev
+    volumes:
+      # Mount project root to /workspace inside the container
+      - .:/workspace
+      # Persist pip cache to speed up rebuilds
+      - pip_cache:/root/.cache/pip
+      # Persist renv cache inside the container
+      # - renv_cache:/root/.renv/cache
+      # To use renv cache from your host machine, uncomment the following line
+      # - ~/Library/Caches/org.R-project.R/R/renv/cache:/root/.renv/cache
+    ports:
+      # Jupyter Lab
+      - "8888:8888"
+    environment:
+      # Specify Python path for reticulate (R -> Python bridge)
+      - RETICULATE_PYTHON=/usr/local/bin/python
+      # renv cache path
+      # - RENV_PATHS_CACHE=/root/.renv/cache
+    # Keep container running for VS Code devcontainer attach
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+
+volumes:
+  pip_cache:
+  renv_cache:
