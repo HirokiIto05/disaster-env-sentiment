@@ -1,0 +1,284 @@
+---
+title: "Bioguide テキストパーサー"
+subtitle: "bioguide_bio_raw.json から高校情報を抽出"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    self-contained: true
+execute:
+  warning: false
+  message: false
+---
+
+## 概要
+
+`bioguide_bio_raw.json`（820人分の伝記テキスト）から正規表現で
+高校名・都市・州・卒業年を抽出し、`bioguide_hs.csv` として保存する。
+
+---
+
+## セットアップ
+
+```{python}
+#| label: setup
+#| cache: false
+
+import re
+import json
+import polars as pl
+from pathlib import Path
+from pyprojroot import here
+
+PROJECT_ROOT = here()
+OUT_DIR      = PROJECT_ROOT / "01_data" / "raw" / "politician"
+RAW_JSON     = OUT_DIR / "bioguide_bio_raw.json"
+OUT_CSV      = OUT_DIR / "bioguide_hs.csv"
+
+print(f"入力: {RAW_JSON}")
+print(f"出力: {OUT_CSV}")
+```
+
+---
+
+## 定数・パターン定義
+
+```{python}
+#| label: patterns
+
+# 州略称 → 州名マッピング
+STATE_ABBR = {
+    "Ala.": "Alabama", "Alaska": "Alaska", "Ariz.": "Arizona", "Ark.": "Arkansas",
+    "Calif.": "California", "Colo.": "Colorado", "Conn.": "Connecticut",
+    "Del.": "Delaware", "Fla.": "Florida", "Ga.": "Georgia", "Hawaii": "Hawaii",
+    "Idaho": "Idaho", "Ill.": "Illinois", "Ind.": "Indiana", "Iowa": "Iowa",
+    "Kans.": "Kansas", "Ky.": "Kentucky", "La.": "Louisiana", "Maine": "Maine",
+    "Md.": "Maryland", "Mass.": "Massachusetts", "Mich.": "Michigan",
+    "Minn.": "Minnesota", "Miss.": "Mississippi", "Mo.": "Missouri",
+    "Mont.": "Montana", "Nebr.": "Nebraska", "Nev.": "Nevada",
+    "N.H.": "New Hampshire", "N.J.": "New Jersey", "N.Mex.": "New Mexico",
+    "N.Y.": "New York", "N.C.": "North Carolina", "N.Dak.": "North Dakota",
+    "Ohio": "Ohio", "Okla.": "Oklahoma", "Oreg.": "Oregon", "Pa.": "Pennsylvania",
+    "R.I.": "Rhode Island", "S.C.": "South Carolina", "S.Dak.": "South Dakota",
+    "Tenn.": "Tennessee", "Tex.": "Texas", "Utah": "Utah", "Vt.": "Vermont",
+    "Va.": "Virginia", "Wash.": "Washington", "W.Va.": "West Virginia",
+    "Wis.": "Wisconsin", "Wyo.": "Wyoming", "D.C.": "District of Columbia",
+}
+STATE_PAT_STR = '|'.join(re.escape(k) for k in STATE_ABBR)
+CITY_PAT      = r"[A-Z][A-Za-z\.\'\-]*(?:\s+[A-Z][A-Za-z\.\'\-]*)*"
+HS_KEYWORDS   = r'(?:high school|senior high|academy|preparatory school|prep school|central school)'
+
+# パターン①: "graduated from/attended 校名, 都市, 州., 年"
+#             または "校名, 州., 年" (都市なし)
+#             または "校名, 都市, 年" (州なし)
+HS_PAT = re.compile(
+    rf'(?:graduated from|graduated|attended)\s+'
+    rf'((?:[A-Z][a-zA-Z\s\.\'\-]+?){HS_KEYWORDS})'   # グループ1: 校名
+    rf'(?:,\s*'
+    rf'(?:'
+    rf'({CITY_PAT}),\s*({STATE_PAT_STR})'    # グループ2: 都市, グループ3: 州
+    rf'|({STATE_PAT_STR})'                    # グループ4: 州のみ
+    rf'|({CITY_PAT})(?=,\s*\d{{4}}|[;\.,])'  # グループ5: 都市のみ
+    rf')'
+    rf')?'
+    rf'(?:,\s*(\d{{4}}))?',                 # グループ6: 年
+    re.IGNORECASE
+)
+
+# パターン②a: "attended/educated in public schools of/in 都市, 州." または "attended grammar school in 都市, 州." (高校名なし)
+PUBLIC_MULTI_PAT = re.compile(
+    rf'(?:attended|educated in)\s+(?:the\s+)?public(?: and private)? schools in\s+'
+    rf'({CITY_PAT}),\s*({STATE_PAT_STR}),\s*and\s+'
+    rf'({CITY_PAT}),\s*({STATE_PAT_STR})(?=\s|[;,\.]|$)',
+    re.IGNORECASE
+)
+
+# パターン②b: "attended private schools in 都市, 州." (高校名なし)
+PRIVATE_PAT = re.compile(
+    rf'(?:attended|educated in)\s+(?:the\s+)?private schools in\s+'
+    rf'({CITY_PAT}),\s*({STATE_PAT_STR})(?=\s|[;,\.]|$)',
+    re.IGNORECASE
+)
+
+# パターン②c: "attended/educated in public schools of/in 都市, 州." または "attended grammar school in 都市, 州." (高校名なし)
+PUBLIC_PAT_WITH_STATE = re.compile(
+    rf'(?:attended|educated in)\s+(?:the\s+)?'
+    rf'(?:(?:public schools)\s+(?:of|in)\s+({CITY_PAT}),\s*({STATE_PAT_STR})'
+    rf'|(?:grammar school)\s+in\s+({CITY_PAT}),\s*({STATE_PAT_STR}))'
+    rf'(?=\s|[;,\.]|$)',
+    re.IGNORECASE
+)
+
+# パターン②b: 州の記載がない public/grammar school
+PUBLIC_PAT_WITHOUT_STATE = re.compile(
+    rf'(?:attended|educated in)\s+(?:the\s+)?'
+    rf'(?:(?:public schools)\s+(?:of|in)\s+({CITY_PAT})'
+    rf'|(?:grammar school)\s+in\s+({CITY_PAT}))'
+    rf'[;,\.]',
+    re.IGNORECASE
+)
+
+print("パターン定義完了")
+```
+
+---
+
+## 抽出関数
+
+```{python}
+#| label: extractor
+# bid = "D000416"
+# text = raw[bid]
+def extract_hs(bid: str, text: str) -> dict:
+    """伝記テキストから高校情報を抽出する"""
+    base = {
+        "bioguide":  bid,
+        "hs_name":   "",
+        "hs_city":   "",
+        "hs_state":  "",
+        "hs_year":   "",
+        "pattern":   "none",
+    }
+    if not text:
+        return base
+
+    # パターン②: public and private schools で複数の都市/州が並ぶ場合は先頭を採用
+    m0 = PUBLIC_MULTI_PAT.search(text)
+    if m0:
+        city       = m0.group(1).strip()
+        state_abbr = m0.group(2).strip()
+        return {**base,
+            "hs_city":  city,
+            "hs_state": STATE_ABBR.get(state_abbr, ""),
+            "pattern":  "public_schools_multi",
+        }
+
+    m1 = PRIVATE_PAT.search(text)
+    if m1:
+        city       = m1.group(1).strip()
+        state_abbr = m1.group(2).strip()
+        return {**base,
+            "hs_city":  city,
+            "hs_state": STATE_ABBR.get(state_abbr, ""),
+            "pattern":  "private_schools",
+        }
+
+    # パターン②: 高校名がないが、public/grammar school の所在地が明示されている場合
+    m2 = PUBLIC_PAT_WITH_STATE.search(text)
+    if m2:
+        city       = (m2.group(1) or m2.group(3) or "").strip()
+        state_abbr = (m2.group(2) or m2.group(4) or "").strip()
+        return {**base,
+            "hs_city":  city,
+            "hs_state": STATE_ABBR.get(state_abbr, ""),
+            "pattern":  "public_schools",
+        }
+
+    m2 = PUBLIC_PAT_WITHOUT_STATE.search(text)
+    if m2:
+        city       = (m2.group(1) or m2.group(2) or "").strip()
+        return {**base,
+            "hs_city":  city,
+            "hs_state": "",
+            "pattern":  "public_schools",
+        }
+
+    # パターン①: 高校名が明示されている
+    m = HS_PAT.search(text)
+    if m:
+        school     = m.group(1).strip().rstrip(',')
+        city       = (m.group(2) or m.group(5) or "").strip()
+        state_abbr = (m.group(3) or m.group(4) or "").strip()
+        year       = (m.group(6) or "").strip()
+        return {**base,
+            "hs_name":  school,
+            "hs_city":  city,
+            "hs_state": STATE_ABBR.get(state_abbr, ""),
+            "hs_year":  year,
+            "pattern":  "graduated_attended",
+        }
+
+    return base
+
+print("抽出関数定義完了")
+```
+
+
+```{python}
+
+```
+---
+
+## 全件抽出・保存
+
+```{python}
+#| label: extract-all
+
+with open(RAW_JSON, encoding="utf-8") as f:
+    raw = json.load(f)
+
+records = [extract_hs(bid, text) for bid, text in raw.items()]
+
+df_bio = pl.DataFrame(records)
+df_bio.head(10)
+```
+
+## カバレッジ確認
+
+```{python}
+#| label: coverage
+# records は list なので、Polars DataFrame(df_bio) を使って絞り込み
+df_bio.filter(
+    (pl.col("hs_name") != "") | (pl.col("hs_city") != "")
+)
+
+from collections import Counter
+total      = len(records)
+has_name   = sum(1 for r in records if r["hs_name"])
+has_city   = sum(1 for r in records if r["hs_city"])
+has_state  = sum(1 for r in records if r["hs_state"])
+has_both   = sum(1 for r in records if r["hs_name"] and r["hs_state"])
+has_name_or_city = sum(1 for r in records if r["hs_name"] or r["hs_city"])
+pattern_ct = Counter(r["pattern"] for r in records)
+
+print(f"=== カバレッジ ===")
+print(f"総件数              : {total:>4}")
+print(f"高校名あり          : {has_name:>4} ({has_name/total*100:.1f}%)")
+print(f"都市あり            : {has_city:>4} ({has_city/total*100:.1f}%)")
+print(f"州あり              : {has_state:>4} ({has_state/total*100:.1f}%)")
+print(f"高校名 + 州あり     : {has_both:>4} ({has_both/total*100:.1f}%)")
+print(f"高校名or都市あり    : {has_name_or_city:>4} ({has_name_or_city/total*100:.1f}%)")
+print(f"\n=== パターン別 ===")
+for k, v in pattern_ct.most_common():
+    print(f"  {k:<25}: {v:>4} 件")
+```
+
+
+
+```{python}
+df_hs = (
+    df_bio
+    .filter((pl.col("hs_name") != "") | (pl.col("hs_city") != ""))
+    .select("bioguide", "hs_name", "hs_city", "hs_state", "hs_year")
+)
+```
+
+```{python}
+df_main = (
+    pl.read_csv(here("01_data/intermediate/politicians.csv"))
+    .with_columns(
+        pl.col("birthday").str.slice(0, 4).cast(pl.Int32, strict=False).alias("birth_year")
+    )
+    .filter(pl.col("birth_year").is_not_null() & (pl.col("birth_year") >= 1946))
+    )
+df_merge = (
+    df_main.join(df_hs, on="bioguide", how="left")
+    .filter(pl.col("hs_name").is_not_null())
+    )
+```
+
+```{python}
+df_merge.write_csv((here("01_data/intermediate/politicians_hs.csv")))
+```

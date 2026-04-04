@@ -1,0 +1,160 @@
+---
+title: "Clean High School Data"
+date: today
+format:
+  html:
+	toc: true
+execute:
+  warning: false
+  message: false
+---
+
+## Setup
+
+```{python}
+import polars as pl
+from pyprojroot.here import here
+
+PUBLIC_PATH = here("01_data/raw/highschool/public/EDGE_GEOCODE_PUBLICSCH_2425.csv")
+PRIVATE_PATH = here("01_data/raw/highschool/private/pss2122_pu.csv")
+
+OUT_PUBLIC = here("01_data/intermediate/hs_public_clean.csv")
+OUT_PRIVATE = here("01_data/intermediate/hs_private_clean.csv")
+OUT_ALL = here("01_data/intermediate/hs_all_clean.csv")
+```
+
+## Load Raw Files
+
+```{python}
+df_hs_pub_raw = pl.read_csv(PUBLIC_PATH)
+df_hs_private_raw = pl.read_csv(
+	PRIVATE_PATH,
+	null_values=["N", "M"],
+	infer_schema_length=10000,
+)
+
+print("public:", df_hs_pub_raw.shape)
+print("private:", df_hs_private_raw.shape)
+```
+
+## Standardize Public School Geocodes
+
+```{python}
+df_hs_pub = (
+	df_hs_pub_raw
+	.select(
+		"NCESSCH", "NAME", "STREET", "CITY", "STATE", "ZIP",
+		"STFIP", "CNTY", "NMCNTY", "LOCALE", "LAT", "LON",
+		"CBSA", "NMCBSA", "CBSATYPE", "CSA", "NMCSA", "CD", "SLDL", "SLDU", "SCHOOLYEAR"
+	)
+	.rename(
+		{
+			"NCESSCH": "school_id",
+			"NAME": "school_name",
+			"STREET": "street",
+			"CITY": "city",
+			"STATE": "state",
+			"ZIP": "zip",
+			"STFIP": "state_fips",
+			"CNTY": "county_fips",
+			"NMCNTY": "county_name",
+			"LOCALE": "locale",
+			"LAT": "lat",
+			"LON": "lon",
+			"CBSA": "cbsa",
+			"NMCBSA": "nmcbsa",
+			"CBSATYPE": "cbsa_type",
+			"CSA": "csa",
+			"NMCSA": "nmcsa",
+			"CD": "cd",
+			"SLDL": "sldl",
+			"SLDU": "sldu",
+			"SCHOOLYEAR": "school_year",
+		}
+	)
+	.with_columns(
+		pl.col("zip").cast(pl.Utf8, strict=False).str.zfill(5),
+		pl.col("county_fips").cast(pl.Utf8, strict=False).str.zfill(5),
+		pl.col("state_fips").cast(pl.Utf8, strict=False).str.zfill(2),
+		pl.lit("public_edge").alias("source"),
+	)
+)
+```
+
+## Standardize Private School Geocodes (PSS)
+
+```{python}
+# Private technical doc の主要項目に対応する列を抽出
+df_hs_private = (
+	df_hs_private_raw
+	.select(
+		"PPIN", "PINST", "PADDRS", "PCITY", "PSTABB", "PZIP",
+		"PCNTY22", "PCNTNM", "ULOCALE22", "LATITUDE22", "LONGITUDE22",
+		"SLDLST22", "SLDUST22"
+	)
+	.rename(
+		{
+			"PPIN": "school_id",
+			"PINST": "school_name",
+			"PADDRS": "street",
+			"PCITY": "city",
+			"PSTABB": "state",
+			"PZIP": "zip",
+			"PCNTY22": "county_fips",
+			"PCNTNM": "county_name",
+			"ULOCALE22": "locale",
+			"LATITUDE22": "lat",
+			"LONGITUDE22": "lon",
+			"SLDLST22": "sldl",
+			"SLDUST22": "sldu",
+		}
+	)
+	.with_columns(
+		pl.col("zip").cast(pl.Utf8, strict=False).str.zfill(5),
+		pl.col("county_fips").cast(pl.Utf8, strict=False).str.zfill(5),
+		pl.lit(None).cast(pl.Utf8).alias("state_fips"),
+		pl.lit(None).cast(pl.Utf8).alias("cbsa"),
+		pl.lit(None).cast(pl.Utf8).alias("nmcbsa"),
+		pl.lit(None).cast(pl.Utf8).alias("cbsa_type"),
+		pl.lit(None).cast(pl.Utf8).alias("csa"),
+		pl.lit(None).cast(pl.Utf8).alias("nmcsa"),
+		pl.lit(None).cast(pl.Utf8).alias("cd"),
+		pl.lit("2021-2022").alias("school_year"),
+		pl.lit("private_pss").alias("source"),
+	)
+)
+```
+
+## Align Schema and Save
+
+```{python}
+ordered_cols = [
+	"school_id", "school_name", "street", "city", "state", "zip",
+	"state_fips", "county_fips", "county_name", "locale", "lat", "lon",
+	"cbsa", "nmcbsa", "cbsa_type", "csa", "nmcsa", "cd", "sldl", "sldu",
+	"school_year", "source"
+]
+
+df_hs_pub = df_hs_pub.select(ordered_cols)
+df_hs_private = df_hs_private.select(ordered_cols)
+
+df_hs_all = pl.concat([df_hs_pub, df_hs_private], how="vertical")
+
+df_hs_pub.write_csv(OUT_PUBLIC)
+df_hs_private.write_csv(OUT_PRIVATE)
+df_hs_all.write_csv(OUT_ALL)
+
+print("saved:", OUT_PUBLIC)
+print("saved:", OUT_PRIVATE)
+print("saved:", OUT_ALL)
+```
+
+## Quick Checks
+
+```{python}
+print(df_hs_pub.shape)
+print(df_hs_private.shape)
+print(df_hs_all.shape)
+
+df_hs_all.select("source").group_by("source").len()
+```

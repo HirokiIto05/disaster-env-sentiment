@@ -1,0 +1,199 @@
+---
+title: "Bioguide スクレイピング"
+subtitle: "bioguide.congress.gov から伝記テキストを取得"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    self-contained: true
+execute:
+  warning: false
+  message: false
+---
+
+## 概要
+
+`bioguide.congress.gov` からコホート820人分の伝記テキストを取得し、
+JSONファイルとして保存する。後工程でパースして高校情報を抽出する。
+
+---
+
+## セットアップ
+
+```{python}
+#| label: setup
+#| cache: false
+
+import random
+import re
+import asyncio
+import json
+import polars as pl
+from pathlib import Path
+from playwright.async_api import async_playwright
+from pyprojroot import here
+
+PROJECT_ROOT = here()
+OUT_DIR      = PROJECT_ROOT / "01_data" / "raw" / "politician"
+COHORT_CSV   = here("01_data/intermediate/politicians_hist.csv")
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+CACHE_PATH   = OUT_DIR / "bioguide_bio_raw.json"
+# SLEEP_SEC    = 5   # リクエスト間のウェイト（秒）
+
+print(f"出力先: {CACHE_PATH}")
+```
+
+---
+
+## コホート読み込み
+
+```{python}
+#| label: load-cohort
+#| cache: false
+
+cohort = (
+    pl.read_csv(COHORT_CSV, infer_schema_length=0)
+    .with_columns(
+        pl.col("birthday").str.slice(0, 4).cast(pl.Int32, strict=False).alias("birth_year")
+    )
+    .filter(pl.col("birth_year").is_not_null() & (pl.col("birth_year") >= 1946))
+)
+
+bioguide_ids = cohort["bioguide"].to_list()
+print(f"取得対象: {len(bioguide_ids)} 人")
+```
+
+---
+
+## キャッシュ読み込み
+
+```{python}
+#| label: load-cache
+#| cache: false
+results
+# 取得済みのキャッシュがあれば読み込む（途中再開に対応）
+if CACHE_PATH.exists():
+    with open(CACHE_PATH, encoding="utf-8") as f:
+        results = json.load(f)
+    print(f"キャッシュ読み込み済み: {len(results)} 件")
+else:
+    results = {}
+    print("キャッシュなし → 新規取得")
+
+# 未取得 = resultsにキーがない
+remaining_new = [bid for bid in bioguide_ids if bid not in results]
+
+# テキストなし = キーはあるが空文字
+remaining_empty = [bid for bid in bioguide_ids if bid in results and results[bid] == ""]
+
+# 両方まとめて再取得対象にする
+remaining = remaining_new + remaining_empty
+
+print(f"未取得       : {len(remaining_new)} 人")
+print(f"テキストなし : {len(remaining_empty)} 人")
+print(f"再取得対象   : {len(remaining)} 人")
+print(f"取得済み     : {len(results) - len(remaining_empty)} 人")
+```
+
+---
+
+## Bioguide スクレイピング
+
+```{python}
+#| label: scrape
+#| cache: false
+
+p = await async_playwright().start()
+browser = await p.chromium.launch(headless=False)
+
+# await browser.close()
+# await p.stop()
+
+for bid in remaining_empty:
+    del results[bid]
+
+# for i, bid in enumerate(remaining):
+for i, bid in enumerate(remaining_empty):
+    context = await browser.new_context()
+    page    = await context.new_page()
+
+    try:
+        url = f"https://bioguide.congress.gov/search/bio/{bid}"
+        await page.goto(url, timeout=60000)
+
+        try:
+            text = await page.locator("div#Biography span").inner_text()
+        except Exception:
+            text = ""
+
+        # 方法①が空だった場合、方法②: div#Biography全体を取得
+        if not text.strip():
+
+            # div#Biography 全体を取得
+            full_text = await page.locator("div#Biography").inner_text()
+
+            # "a Representative" or "a Senator" 以降を本文として抽出
+            m = re.search(r'(a (?:Representative|Senator|Delegate).+)', full_text, re.DOTALL)
+            text = m.group(1).strip() if m else full_text.strip()
+
+        results[bid] = text.strip()
+        print(f"  {i+1:>4}/{len(remaining)} {bid} → OK")
+
+    except Exception as e:
+        results[bid] = ""   # エラーも記録してスキップ
+        print(f"  {i+1:>4}/{len(remaining)} {bid} → エラー: {e}")
+
+    finally:
+        await context.close()
+
+    # 10件ごとに中間保存
+    if (i + 1) % 10 == 0:
+        with open(CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
+        print(f"  >>> 中間保存: {len(results)} 件")
+        
+    if (i + 1) % 20 == 0:
+        print(f"  >>> 20件完了、休憩中...")
+        await asyncio.sleep(random.uniform(15, 25))
+    else:
+        await asyncio.sleep(random.uniform(4, 6))
+    # await asyncio.sleep(random.uniform(4, 6))
+
+await browser.close()
+await p.stop()
+
+# 最終保存
+with open(CACHE_PATH, "w", encoding="utf-8") as f:
+    json.dump(results, f, ensure_ascii=False, indent=2)
+
+print(f"\n完了: {len(results)} 件 → {CACHE_PATH}")
+```
+
+---
+
+## 取得結果の確認
+
+```{python}
+#| label: check-results
+#| cache: false
+results
+total      = len(bioguide_ids)
+success    = sum(1 for v in results.values() if v != "")
+failed     = sum(1 for v in results.values() if v == "")
+not_yet    = total - len(results)
+
+print(f"=== 取得結果サマリー ===")
+print(f"コホート総数  : {total:>4} 人")
+print(f"取得成功      : {success:>4} 人 ({success/total*100:.1f}%)")
+print(f"エラー/空     : {failed:>4} 人")
+print(f"未取得        : {not_yet:>4} 人")
+
+# サンプル確認（先頭3件）
+print("\n=== サンプル（先頭3件）===")
+for bid, text in list(results.items())[:3]:
+    print(f"\n[{bid}]")
+    print(text[:200] + "..." if len(text) > 200 else text)
+```
