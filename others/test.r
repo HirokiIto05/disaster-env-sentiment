@@ -6,6 +6,7 @@ library(stringr)
 df_hs <- read_csv(here("01_data/intermediate/high_school/hs_all_clean.csv"), show_col_types = FALSE)
 df_politician <- read_csv(here("01_data/intermediate/politicians_hs.csv"), show_col_types = FALSE)
 
+
 normalize_school_name <- function(x) {
 	x |>
 		str_to_upper() |>
@@ -90,12 +91,17 @@ df_politician_filled <- df_politician |>
 
 before_missing <- sum(is.na(df_politician$hs_city) | str_squish(df_politician$hs_city) == "")
 after_missing <- sum(is.na(df_politician_filled$hs_city) | str_squish(df_politician_filled$hs_city) == "")
-df_politician_filled |> 
-  dplyr::filter(is.na(hs_city)) |> 
-	distinct(hs_name) |> pull()
+
 cat("Missing hs_city (before):", before_missing, "\n")
 cat("Missing hs_city (after):", after_missing, "\n")
 cat("Filled hs_city:", before_missing - after_missing, "\n")
 
 write_csv(df_politician_filled, here("01_data/intermediate/politicians_hs_filled.csv"))
 
+
+df_disaster <- read_csv(here("01_data/raw/disaster/FemaWebDeclarationAreas.csv"), show_col_types = FALSE)
+df_disaster  |> glimpse()
+df_politician_filled  |> glimpse()
+
+df_politician_filled  |> distinct(hs_city) |> slice_head(n = 100) |> pull()
+df_disaster  |> distinct(placeName) |> slice_head(n = 100) |> pull()

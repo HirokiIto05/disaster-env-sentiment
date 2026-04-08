@@ -6,8 +6,24 @@ from pyprojroot.here import here
 
 
 ```{python}
-src = here("01_data/raw/us_congress/legislators-historical.json")
-df_raw = pl.read_json(src, infer_schema_length=None)
+src_historical = here("01_data/raw/us_congress/legislators-historical.json")
+src_current = here("01_data/raw/us_congress/legislators-current.json")
+df_historical = pl.read_json(src_historical, infer_schema_length=None)
+df_current = pl.read_json(src_current, infer_schema_length=None)
+
+# Align current columns and dtypes to historical, then stack them.
+hist_schema = df_historical.schema
+df_current_aligned = df_current.select(
+	[
+		(
+			pl.col(col_name).cast(dtype, strict=False).alias(col_name)
+			if col_name in df_current.columns
+			else pl.lit(None, dtype=dtype).alias(col_name)
+		)
+		for col_name, dtype in hist_schema.items()
+	]
+)
+df_raw = pl.concat([df_historical, df_current_aligned], how="vertical")
 
 print(df_raw.shape)
 df_raw.head(3)
@@ -116,9 +132,5 @@ terms_summary
 people.null_count().transpose(include_header=True, header_name="column", column_names=["n_null"]) \
 	.sort("n_null", descending=True) \
 	.head(15)
-```
-
-```{python}
-
 ```
 

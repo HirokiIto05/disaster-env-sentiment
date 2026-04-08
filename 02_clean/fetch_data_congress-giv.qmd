@@ -37,7 +37,7 @@ from pyprojroot import here
 
 PROJECT_ROOT = here()
 OUT_DIR      = PROJECT_ROOT / "01_data" / "raw" / "politician"
-COHORT_CSV   = here("01_data/intermediate/politicians_hist.csv")
+COHORT_CSV   = here("01_data/intermediate/politicians.csv")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 CACHE_PATH   = OUT_DIR / "bioguide_bio_raw.json"
@@ -73,7 +73,7 @@ print(f"取得対象: {len(bioguide_ids)} 人")
 ```{python}
 #| label: load-cache
 #| cache: false
-results
+
 # 取得済みのキャッシュがあれば読み込む（途中再開に対応）
 if CACHE_PATH.exists():
     with open(CACHE_PATH, encoding="utf-8") as f:
@@ -112,6 +112,7 @@ browser = await p.chromium.launch(headless=False)
 # await browser.close()
 # await p.stop()
 
+# for bid in remaining:
 for bid in remaining_empty:
     del results[bid]
 
