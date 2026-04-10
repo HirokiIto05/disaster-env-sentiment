@@ -1,0 +1,138 @@
+---
+title: "Proposal"
+bibliography: text_analysis.bib
+---
+
+
+# Research Question
+
+Does exposure to natural disasters during impressionable years (high school age) shape the long-term environmental preferences of U.S. legislators?
+
+This project studies whether early-life disaster exposure influences:
+
+1. The environmental sentiment of legislators' speech in the Congressional Record
+2. Their revealed environmental policy stance (LCV score)
+
+
+# Motivation
+
+Recent work suggests that environmental shocks can affect preferences and political behavior. (\ref{@falco_natural_2023}) However, less is known about whether these effects persist among political elites and influence national policy positions over a long horizon.
+
+If disaster experience during youth leaves a durable imprint, this can help explain heterogeneity in environmental policymaking even within the same party and institutional setting.
+
+
+# Most Relevant Literature
+
+### Environmental Preferences and Political Behavior
+
+1. Falco, C., & Corbi, R. (2023), *Economics Letters*  
+    *Natural disasters and preferences for the environment: Evidence from the impressionable years.*  
+    Key insight: disaster exposure in impressionable years is associated with pro-environment preferences later in life.
+
+2. Elliott, R. J. R., et al. (2023), *Journal of the Association of Environmental and Resource Economists*  
+    *Climate-related natural disasters and voting behavior: Evidence from environmental legislation in the U.S. Senate.*  
+    Key insight: climate-related disasters affect legislative behavior on environmental policy.
+
+## Methodological Background
+
+This study combines individual-level panel construction with text-based sentiment outcomes and policy score outcomes, linking early-life county exposure to later political behavior.
+
+
+# Hypotheses
+
+1. Legislators who experienced more severe disaster exposure during high school years use more pro-environment language in congressional speech.
+2. Legislators with higher disaster exposure during high school years have higher LCV scores.
+3. Effects are stronger for exposure occurring during impressionable ages than for non-impressionable periods.
+
+# Data
+
+## Sample
+Politicians who was born after 1946 because disaster data is available from 1953 and high school years are typically between ages 14-18. The total number of legislators with high school description on official bioguide is 885 out of 1335 (0.663). The final sample size will depend on the success of matching high school location within the US to disaster data, but I expect to have at least 800 legislators in the final analysis.
+
+
+
+## Dependent Variables
+
+1. **Congressional speech sentiment (1971-2023)**  (Progress)
+    Source: USCR Congressional Record API and related text corpora  
+    - https://data.stanford.edu/congress_text  
+    - https://github.com/unitedstates/congressional-record/
+
+2. **LCV score (1971-2023)**  (Done)
+    Source: League of Conservation Voters scorecards and Harvard Dataverse  
+    - https://scorecard.lcv.org/  
+    - https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/GCGJJA
+
+
+### Independent Variable
+
+1. **Disaster exposure during high school years** (Progress)
+    Source:
+      1. FEMA Disaster Declarations Summary (county-level, 1953-present)
+          https://www.fema.gov/about/openfema/data-sets
+      2. Biography data
+          https://bioguide.congress.gov/
+      3. High school location(County-level) 
+          https://nces.ed.gov/programs/edge/geographic/schoollocations
+
+
+Scrape biographical text to identify high school location and match to county-level disaster data
+
+
+
+### Controls
+
+1. Party affiliation (Democrat / Republican / Independent)
+2. State-level economic indicators (for example, unemployment rate, GDP per capita)
+3. Legislator demographics (for example, age, gender, education)
+4. Additional political controls from Harvard Dataverse  
+    - https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/R1PCY6
+
+# Current Descriptive Statistics
+
+
+
+# Expected Results and Contribution
+
+Expected findings are positive and persistent effects of impressionable-year disaster exposure on both rhetoric and policy behavior.
+
+Main contributions:
+
+1. Evidence on long-run preference formation among political elites
+2. A unified framework connecting early-life shocks, speech, and policy scores
+3. New panel data linkage between biography, schooling geography, and disaster history
+
+
+# Timeline (Draft)
+
+## May
+
+1. Finalize data collection.
+2. Complete high school-to-county matching.
+3. Finalize disaster exposure construction.
+
+## June
+
+1. Conduct manual annotation of environmental text for sentiment model training.
+2. Finalize sentiment outcomes from text data.
+3. Build the panel dataset combining sentiment and LCV outcomes.
+
+## July
+
+1. Run baseline estimations.
+2. Run robustness checks.
+3. Expand manual annotation if model performance is insufficient.
+4. Submit a full draft to the advisor for feedback.
+
+## August
+
+1. Revise based on feedback.
+2. Finalize and submit the paper.
+
+
+## References
+
+1. Falco, C., & Corbi, R. (2023). *Natural disasters and preferences for the environment: Evidence from the impressionable years.* Economics Letters.
+2. Elliott, R. J. R., et al. (2023). *Climate-related natural disasters and voting behavior: Evidence from environmental legislation in the U.S. Senate.* Journal of the Association of Environmental and Resource Economists.
+
+

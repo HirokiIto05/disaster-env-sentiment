@@ -1,0 +1,49 @@
+---
+title: "Experience"
+---
+
+# Education
+
+## Heidelberg University
+M.Sc. in Economics, Oct 2024 - Present  
+GPA: 1.7  
+Related Courses: Advanced Microeconomics (1.3), Advanced Econometrics (1.7), GeoAI and Deep Learning (1.7)
+
+
+## Yokohama National University
+B.A. in Economics, Apr 2018 - Mar 2023
+
+# Research Experience
+
+- Research Assistant, UTokyo Economic Consulting Co., Ltd. (2023.5 - 2025.12)
+- Research Assistant (Co-author), Senior Research Fellow Yuki Hashimoto, Research Institute of Economy, Trade and Industry (RIETI) (2023.5 - 2023.8, 2024.5 - Present)
+- Research Assistant, Associate Professor Tomoshio Furukawa, Faculty of International Social Sciences, Yokohama National University (2021.9 - 2024.9)
+- Research Assistant, Professor Kentaro Nakajima, Graduate School of Business Administration, Hitotsubashi University (2024.7 - 2024.9)
+
+# Teaching Experience
+
+## Teaching Assistant
+- Micro Data Science (Undergraduate), Yokohama National University
+- Intermediate Micro Data Science (Undergraduate), Yokohama National University
+
+Terms: 2022 Fall, 2023 Fall, 2024 Spring
+
+## Academic Program Activities
+
+### Student Organizer
+Applied Social Science RA Bootcamp (5-day summer program)  
+https://www.ra-bootcamp.jp/initiative  
+2023, 2024, 2025
+
+# Papers
+
+1. Hiroki Ito. *Do Local Railway Line Closures Reduce Regional Population?* (Undergraduate thesis, 2nd place)
+
+2. Yuki Hashimoto, Hiroki Ito, Kairu Chikamoto. *Comparing the Population Distribution of Foreign and Japanese Residents: Technical Intern Trainees Supporting Local Labor Supply.* RIETI Policy Discussion Paper 23-P-015, August 2023 (non-peer-reviewed).
+
+
+# Skills
+
+- Language: Japanese (Native), English (Intermediate)
+- Programming: R (Advanced), Python (Intermediate), Stata (Intermediate)
+- Other: Git, LaTeX, Quarto, Markdown, Docker, GIS
