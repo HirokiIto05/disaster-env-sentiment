@@ -16,79 +16,10 @@ import re
 
 import polars as pl
 
-
-STATE_MAP = {
-	"ALABAMA": "AL",
-	"ALASKA": "AK",
-	"ARIZONA": "AZ",
-	"ARKANSAS": "AR",
-	"CALIFORNIA": "CA",
-	"COLORADO": "CO",
-	"CONNECTICUT": "CT",
-	"DELAWARE": "DE",
-	"DISTRICT OF COLUMBIA": "DC",
-	"FLORIDA": "FL",
-	"GEORGIA": "GA",
-	"HAWAII": "HI",
-	"IDAHO": "ID",
-	"ILLINOIS": "IL",
-	"INDIANA": "IN",
-	"IOWA": "IA",
-	"KANSAS": "KS",
-	"KENTUCKY": "KY",
-	"LOUISIANA": "LA",
-	"MAINE": "ME",
-	"MARYLAND": "MD",
-	"MASSACHUSETTS": "MA",
-	"MICHIGAN": "MI",
-	"MINNESOTA": "MN",
-	"MISSISSIPPI": "MS",
-	"MISSOURI": "MO",
-	"MONTANA": "MT",
-	"NEBRASKA": "NE",
-	"NEVADA": "NV",
-	"NEW HAMPSHIRE": "NH",
-	"NEW JERSEY": "NJ",
-	"NEW MEXICO": "NM",
-	"NEW YORK": "NY",
-	"NORTH CAROLINA": "NC",
-	"NORTH DAKOTA": "ND",
-	"OHIO": "OH",
-	"OKLAHOMA": "OK",
-	"OREGON": "OR",
-	"PENNSYLVANIA": "PA",
-	"RHODE ISLAND": "RI",
-	"SOUTH CAROLINA": "SC",
-	"SOUTH DAKOTA": "SD",
-	"TENNESSEE": "TN",
-	"TEXAS": "TX",
-	"UTAH": "UT",
-	"VERMONT": "VT",
-	"VIRGINIA": "VA",
-	"WASHINGTON": "WA",
-	"WEST VIRGINIA": "WV",
-	"WISCONSIN": "WI",
-	"WYOMING": "WY",
-}
-
-
-MANUAL_SCHOOL_NAME_REPLACEMENTS: list[tuple[str, str]] = [
-	(r"\bHERBERT\s+HENRY\s+DOW\s+HIGH\s+SCHOOL\b", " HH DOW HIGH SCHOOL "),
-	(r"\bWAHLERT\s+CATHOLIC\s+HIGH\s+SCHOOL\b", " HOLY FAMILY CATHOLIC SCHOOLS "), # school district name?
-	(r"\bWAHLERT\s+HIGH\s+SCHOOL\b", " HOLY FAMILY CATHOLIC SCHOOLS "), # school district name?
-	(r"\bCATHOLIC\s+MEMORIAL\s+HIGH\s+SCHOOL\b", " CATHOLIC MEMORIAL "), # address match
-	(r"\bJERSEY\s+VILLAGE\s+HIGH\s+SCHOOL\b", " JERSEY VILLAGE H S "),
-	(r"\bLA\s+LUMIERE\s+HIGH\s+SCHOOL\b", " LA LUMIERE SCHOOL "), # Mailing adress
-	(r"\bFORT\s+HUNT\s+HIGH\s+SCHOOL\b", " SANDBURG MIDDLE "), # as of 2025
-	(r"\bCOLUMBIA\s+CITY\s+JOINT\s+HIGH\s+SCHOOL\b", " COLUMBIA CITY HIGH SCHOOL "),
-	(r"\bKIESTER\s+HIGH\s+SCHOOL\b", " UNITED SOUTH CENTRAL HIGH SCHOOL "), # Merge
-	(r"\bMARY\s+D\.?\s+BRADFORD\s+HIGH\s+SCHOOL\b", " BRADFORD HIGH "),
-	(r"\bDAYTON\s+UNION\s+HIGH\s+SCHOOL\b", " DAYTON HIGH SCHOOL "),
-	(r"\bHUMBLE\s+HIGH\s+SCHOOL\b", " HUMBLE H S "),
-	(r"\bARLINGTON\s+HEIGHTS\s+HIGH\s+SCHOOL\b", " ARLINGTON HEIGHTS H S "),
-	(r"\bHARDY\s+PREPARATORY\s+SCHOOL\b", " HARDY BROWN COLLEGE PREP "),
-	(r"\bWESTHAMPTON\s+BEACH\s+HIGH\s+SCHOOL\b", " WESTHAMPTON BEACH SENIOR HIGH SCHOOL "),
-]
+try:
+	from match_politicians_hs_config import MANUAL_SCHOOL_NAME_REPLACEMENTS, STATE_MAP
+except ModuleNotFoundError:
+	from source.match_politicians_hs_config import MANUAL_SCHOOL_NAME_REPLACEMENTS, STATE_MAP
 
 
 def project_root() -> Path:
@@ -110,8 +41,10 @@ def normalize_school_name(expr: pl.Expr) -> pl.Expr:
 		base
 		.str.replace_all(r"\bST\.?\b", " SAINT ")
 		.str.replace_all(r"\bS\.?H\.?S\.?\b", " HIGH SCHOOL ")
+		.str.replace_all(r"\bS\s+H\s+S\b", " HIGH SCHOOL ")
 		.str.replace_all(r"\bSHS\b", " HIGH SCHOOL ")
 		.str.replace_all(r"\bH\.?S\.?\b", " HIGH SCHOOL ")
+		.str.replace_all(r"\bH\s+S\b", " HIGH SCHOOL ")
 		.str.replace_all(r"\bHS\b", " HIGH SCHOOL ")
 		.str.replace_all(r"\bHIGH\s+SCH\b", " HIGH SCHOOL ")
 		.str.replace_all(r"\bSENIOR\s+HIGH(?:\s+SCHOOL)?\b", " HIGH SCHOOL ")
@@ -168,6 +101,7 @@ def clean_hs_reference(df_hs: pl.DataFrame) -> pl.DataFrame:
 		.unique(subset=["school_name_norm", "school_city_norm", "school_state_abbr"])
 		.with_columns(
 			pl.len().over("school_name_norm").alias("school_name_count"),
+			pl.len().over(["school_name_norm", "school_city_norm"]).alias("school_name_city_count"),
 			pl.len().over(["school_name_norm", "school_state_abbr"]).alias("school_name_state_count"),
 			pl.len().over(["school_name_norm", "school_state_abbr", "school_city_norm"]).alias(
 				"school_name_state_city_count"
@@ -286,10 +220,31 @@ def build_output(df_selected: pl.DataFrame) -> pl.DataFrame:
 			"match_method",
 			"match_score",
 			"candidate_rows",
+			(
+				pl.col("school_id").is_not_null()
+				& (
+					(pl.col("match_method") == "name_state_city")
+					| (
+						(pl.col("match_method") == "name_state")
+						& (pl.col("school_name_state_count") == 1)
+					)
+					| (
+						(pl.col("match_method") == "name_city")
+						& (pl.col("school_name_city_count") == 1)
+					)
+					| (
+						(pl.col("match_method") == "name_only")
+						& (pl.col("candidate_rows") == 1)
+					)
+				)
+			).alias("is_unique_match"),
 			"state_match",
 			"city_match",
 		]
 	)
+
+
+
 
 
 def main(save: bool = False) -> None:

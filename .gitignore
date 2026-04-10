@@ -6,3 +6,6 @@ paper/
 *.DS_Store
 01_data/
 parsing/
+website/_site/
+source/__pycache__/
+# *.pyc

@@ -7,6 +7,14 @@ df_hs <- read_csv(here("01_data/intermediate/high_school/hs_all_clean.csv"), sho
 df_politician <- read_csv(here("01_data/intermediate/politicians_hs.csv"), show_col_types = FALSE)
 
 
+
+read_csv(here("01_data/intermediate/politicians_hs_school_matched.csv")) |>
+	count(match_method)
+read_csv(here("01_data/intermediate/politicians_hs_school_matched.csv")) |>
+	count(city_match)
+
+
+
 normalize_school_name <- function(x) {
 	x |>
 		str_to_upper() |>
@@ -99,9 +107,4 @@ cat("Filled hs_city:", before_missing - after_missing, "\n")
 write_csv(df_politician_filled, here("01_data/intermediate/politicians_hs_filled.csv"))
 
 
-df_disaster <- read_csv(here("01_data/raw/disaster/FemaWebDeclarationAreas.csv"), show_col_types = FALSE)
-df_disaster  |> glimpse()
-df_politician_filled  |> glimpse()
 
-df_politician_filled  |> distinct(hs_city) |> slice_head(n = 100) |> pull()
-df_disaster  |> distinct(placeName) |> slice_head(n = 100) |> pull()
