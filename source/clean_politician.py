@@ -1,8 +1,10 @@
 """Clean and flatten US Congress legislator metadata.
 
 Input
-- 01_data/raw/us_congress/legislators-historical.json
-- 01_data/raw/us_congress/legislators-current.json
+- 01_data/raw/text/us_congress/legislators-historical.json
+- 01_data/raw/text/us_congress/legislators-current.json
+- 01_data/raw/text/us_congress/legislators-historical.csv
+- 01_data/raw/text/us_congress/legislators-current.csv
 
 Output
 - 01_data/intermediate/politicians.csv
@@ -19,8 +21,8 @@ def project_root() -> Path:
 
 
 def load_and_merge_legislators(root: Path) -> pl.DataFrame:
-	src_historical = root / "01_data/raw/us_congress/legislators-historical.json"
-	src_current = root / "01_data/raw/us_congress/legislators-current.json"
+	src_historical = root / "01_data/raw/text/us_congress/legislators-historical.json"
+	src_current = root / "01_data/raw/text/us_congress/legislators-current.json"
 
 	df_historical = pl.read_json(src_historical, infer_schema_length=None)
 	df_current = pl.read_json(src_current, infer_schema_length=None)
@@ -41,10 +43,63 @@ def load_and_merge_legislators(root: Path) -> pl.DataFrame:
 	return pl.concat([df_historical, df_current_aligned], how="vertical")
 
 
+def load_district_lookup(root: Path) -> pl.DataFrame:
+	src_historical = root / "01_data/raw/text/us_congress/legislators-historical.csv"
+	src_current = root / "01_data/raw/text/us_congress/legislators-current.csv"
+
+	def read_lookup(path: Path, priority: int) -> pl.DataFrame:
+		return (
+			pl.read_csv(path)
+			.select(
+				pl.col("bioguide_id").cast(pl.Utf8, strict=False),
+				pl.col("district").cast(pl.Int64, strict=False),
+			)
+			.filter(pl.col("bioguide_id").is_not_null() & pl.col("district").is_not_null())
+			.with_columns(pl.lit(priority).alias("_priority"))
+		)
+
+	df_lookup = pl.concat(
+		[
+			read_lookup(src_current, priority=0),
+			read_lookup(src_historical, priority=1),
+		],
+		how="vertical",
+	)
+	return (
+		df_lookup.sort(["bioguide_id", "_priority"])
+		.unique(subset=["bioguide_id"], keep="first")
+		.select(pl.col("bioguide_id"), pl.col("district").alias("district_csv"))
+	)
+
+
 def build_people(df_raw: pl.DataFrame) -> pl.DataFrame:
 	df_people = df_raw.unnest(["id", "name", "bio"])
-
-	return (
+	target_columns = [
+		"bioguide",
+		"first_name",
+		"middle_name",
+		"last_name",
+		"suffix",
+		"nickname",
+		"official_full",
+		"birthday",
+		"gender",
+		"district",
+		"govtrack",
+		"icpsr",
+		"house_history",
+		"thomas",
+		"lis",
+		"cspan",
+		"wikipedia",
+		"wikidata",
+		"google_entity_id",
+		"n_terms",
+		"n_other_names",
+		"terms",
+		"other_names",
+	]
+	df_selected = (
 		df_people.with_columns(
 			pl.col("terms").list.len().fill_null(0).alias("n_terms"),
 			pl.col("other_names").list.len().fill_null(0).alias("n_other_names"),
@@ -57,30 +112,25 @@ def build_people(df_raw: pl.DataFrame) -> pl.DataFrame:
 				"last": "last_name",
 			}
 		)
-		.select(
-			"bioguide",
-			"first_name",
-			"middle_name",
-			"last_name",
-			"suffix",
-			"nickname",
-			"official_full",
-			"birthday",
-			"gender",
-			"govtrack",
-			"icpsr",
-			"house_history",
-			"thomas",
-			"lis",
-			"cspan",
-			"wikipedia",
-			"wikidata",
-			"google_entity_id",
-			"n_terms",
-			"n_other_names",
-			"terms",
-			"other_names",
+	)
+
+	return df_selected.select(
+		[
+			(pl.col(col) if col in df_selected.columns else pl.lit(None).alias(col))
+			for col in target_columns
+		]
+	)
+
+
+def exclude_senators(people: pl.DataFrame) -> pl.DataFrame:
+	return (
+		people.with_columns(
+			pl.col("terms")
+			.list.eval(pl.element().struct.field("type"), parallel=True)
+			.alias("_chamber_types")
 		)
+		.filter(~pl.col("_chamber_types").list.contains("sen").fill_null(False))
+		.drop("_chamber_types")
 	)
 
 
@@ -139,6 +189,18 @@ def main(save: bool = False) -> None:
 
 	df_raw = load_and_merge_legislators(root)
 	people = build_people(df_raw)
+	people = exclude_senators(people)
+	district_lookup = load_district_lookup(root)
+	people = (
+		people.join(district_lookup, left_on="bioguide", right_on="bioguide_id", how="left")
+		.with_columns(
+			pl.coalesce(
+				pl.col("district").cast(pl.Int64, strict=False),
+				pl.col("district_csv"),
+			).alias("district")
+		)
+		.drop("district_csv")
+	)
 	terms = build_terms(people)
 	people_flat = build_people_flat(people)
 

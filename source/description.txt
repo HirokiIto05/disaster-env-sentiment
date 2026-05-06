@@ -1,0 +1,193 @@
+========================================
+disaster-env-sentiment: source folder guide
+========================================
+
+This file summarizes all scripts in source/ and their roles in the pipeline.
+
+
+----------------------------------------
+0) Data fetch
+----------------------------------------
+
+[source/data_fetch/fetch_data_congress-giv.qmd]
+Purpose
+- Scrape biography text from bioguide.congress.gov for target politicians.
+- Save raw biography text as JSON for downstream parsing.
+
+Input
+- 01_data/intermediate/politicians.csv
+
+Output
+- 01_data/raw/politician/bioguide_bio_raw.json
+
+Notes
+- Quarto notebook (Python chunks).
+- Supports resume from cache.
+
+
+----------------------------------------
+1) Core cleaning and extraction
+----------------------------------------
+
+[source/clean_politician.py]
+Purpose
+- Clean and flatten legislator metadata from historical/current JSON files.
+
+Input
+- 01_data/raw/us_congress/legislators-historical.json
+- 01_data/raw/us_congress/legislators-current.json
+
+Output
+- 01_data/intermediate/politicians.csv
+
+CLI
+- Preview: python source/clean_politician.py
+- Save:    python source/clean_politician.py --save
+
+
+[source/bioguide_parser.py]
+Purpose
+- Extract high-school related fields from biography text using regex rules.
+
+Input
+- 01_data/raw/politician/bioguide_bio_raw.json
+- 01_data/intermediate/politicians.csv
+
+Output
+- 01_data/intermediate/politicians_hs.csv
+
+Notes
+- Implements pattern-based extraction with state abbreviation normalization.
+
+
+[source/clean_high_school.py]
+Purpose
+- Standardize and integrate public/private high school reference datasets.
+
+Input
+- 01_data/raw/highschool/public/EDGE_GEOCODE_PUBLICSCH_2425.csv
+- 01_data/raw/highschool/private/pss2122_pu.csv
+
+Output
+- 01_data/intermediate/high_school/hs_public_clean.csv
+- 01_data/intermediate/high_school/hs_private_clean.csv
+- 01_data/intermediate/high_school/hs_all_clean.csv
+
+CLI
+- Preview: python source/clean_high_school.py
+- Save:    python source/clean_high_school.py --save
+
+
+----------------------------------------
+2) School matching pipeline
+----------------------------------------
+
+[source/match_politicians_hs_config.py]
+Purpose
+- Provide shared constants for matching:
+  - US state name -> abbreviation map
+  - Manual school-name replacement patterns
+
+Input
+- None (configuration module)
+
+Output
+- None (imported by matching script)
+
+
+[source/match_politicians_hs_to_hs_all_clean.py]
+Purpose
+- Match politician high-school records to cleaned school reference table.
+- Compute match method/score and unique-match flags.
+
+Input
+- 01_data/intermediate/politicians_hs.csv
+- 01_data/intermediate/high_school/hs_all_clean.csv
+
+Output
+- 01_data/intermediate/politicians_hs_school_matched.csv
+
+CLI
+- Preview: python source/match_politicians_hs_to_hs_all_clean.py
+- Save:    python source/match_politicians_hs_to_hs_all_clean.py --save
+
+
+[source/review_and_integrate_suggestions.py]
+Purpose
+- Generate and review suggestions for rows still labeled as no_match.
+- Export review-friendly CSVs (including confidence-sliced files).
+
+Input
+- 01_data/intermediate/politicians_hs_school_matched.csv
+- 01_data/intermediate/high_school/hs_all_clean.csv
+- (optional) 01_data/intermediate/politicians_hs_no_match_suggestions.csv
+
+Output
+- 01_data/intermediate/politicians_hs_no_match_suggestions_review.csv (optional)
+- 01_data/intermediate/suggestions_high_confidence.csv (optional)
+- 01_data/intermediate/suggestions_medium_confidence.csv (optional)
+- 01_data/intermediate/suggestions_low_confidence.csv (optional)
+
+CLI examples
+- Review summary only:
+  python source/review_and_integrate_suggestions.py
+- Export review CSV:
+  python source/review_and_integrate_suggestions.py --export-review-csv
+- Export confidence files:
+  python source/review_and_integrate_suggestions.py --export-by-confidence
+
+
+----------------------------------------
+3) County/FEMA enrichment pipeline
+----------------------------------------
+
+[source/match_hs_city_to_fema_county.py]
+Purpose
+- Match politician high-school city/state to county via Geocorr place-county crosswalk.
+
+Input
+- 01_data/intermediate/politicians_hs_filled.csv
+- 01_data/raw/geocorr/place_county.csv (default, or custom via --geocorr-path)
+
+Output
+- 01_data/intermediate/politicians_hs_county_matched.csv
+
+CLI
+- Preview: python source/match_hs_city_to_fema_county.py
+- Save:    python source/match_hs_city_to_fema_county.py --save
+- Save with top county only:
+  python source/match_hs_city_to_fema_county.py --save --primary-only
+
+
+[source/flag_disaster_during_highschool_fema_county.py]
+Purpose
+- Flag whether FEMA disaster declarations overlap each politician's high-school period
+  in matched school county/state.
+
+Input
+- 01_data/intermediate/politicians_hs_school_matched.csv
+- 01_data/intermediate/high_school/hs_all_clean.csv
+- 01_data/raw/disaster/FemaWebDeclarationAreas.csv
+  (or custom via --disaster-path)
+
+Output
+- 01_data/intermediate/politicians_hs_fema_county_flag.csv
+
+CLI
+- Preview: python source/flag_disaster_during_highschool_fema_county.py
+- Save:    python source/flag_disaster_during_highschool_fema_county.py --save
+
+
+----------------------------------------
+4) Recommended execution order
+----------------------------------------
+
+1. source/clean_politician.py
+2. source/data_fetch/fetch_data_congress-giv.qmd
+3. source/bioguide_parser.py
+4. source/clean_high_school.py
+5. source/match_politicians_hs_to_hs_all_clean.py
+6. source/review_and_integrate_suggestions.py
+7. source/match_hs_city_to_fema_county.py
+8. source/flag_disaster_during_highschool_fema_county.py
+  

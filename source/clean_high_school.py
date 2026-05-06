@@ -1,3 +1,17 @@
+"""Bioguide text parser.
+
+Purpose
+- Extract high school information from bioguide biography text JSON.
+- Reproduce the original qmd workflow as a Python module/script.
+
+Input
+- 01_data/raw/politician/bioguide_bio_raw.json
+- 01_data/intermediate/politicians.csv
+
+Output
+- 01_data/intermediate/politicians_hs.csv
+"""
+
 from pathlib import Path
 import argparse
 
