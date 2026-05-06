@@ -4,8 +4,10 @@ Proposal/
 pdf/
 paper/
 *.DS_Store
-01_data/
+data/raw/
+data/intermediate/
 parsing/
 website/_site/
 source/__pycache__/
+card_original/
 # *.pyc
