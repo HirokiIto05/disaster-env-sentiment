@@ -16,7 +16,7 @@
         "ms-toolsai.jupyter"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "/usr/bin/python3"
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
         // "r.rpath.linux": "/usr/bin/R",
         // "r.rterm.linux": "/usr/bin/Rscript"
       }
