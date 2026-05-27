@@ -1,0 +1,15 @@
+/* Simple, near-default styling */
+
+body {
+	line-height: 1.7;
+}
+
+h2,
+h3 {
+	margin-top: 1.5rem;
+}
+
+p,
+li {
+	font-size: 1rem;
+}
